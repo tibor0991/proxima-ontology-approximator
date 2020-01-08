@@ -48,29 +48,25 @@ scaled_X = scaler.fit_transform(raw_X)
 print("Shape of the scaled dataset:", scaled_X.shape)
 
 # apply PCA
-PCA = decomposition.PCA(0.95)
+PCA = decomposition.PCA(0.91)
 red_X = PCA.fit_transform(scaled_X)
 print("Shape of the PCA-transformed dataset:", red_X.shape)
 
-# build a covariance matrix from red_X
-cov_mat = np.cov(red_X, rowvar=False)
+# get the eigenvalues from the PCA mapped space
+eigenvalues = np.diagonal(np.cov(red_X, rowvar=False))
+with np.printoptions(precision=3, suppress=True):
+    print(np.diagonal(eigenvalues))
 
-print("Shape of the covariance matrix: ", cov_mat.shape)
 
-# Compute Mahalanobis' distance pairwise
-dist = neighbors.DistanceMetric.get_metric('mahalanobis', V=cov_mat)
-pair_distances = dist.pairwise(red_X)
-
-# remap values (just remaps the values in a [0...1] range)
-max_dist = np.max(pair_distances)
-pair_distances /= max_dist
-pair_distances = np.subtract(1., pair_distances)
+def similarity(a, b) -> float:
+    # TODO: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA scaled euclidean distance plugged into a rbf similarity measure
+    pass
 
 print("Shape of pair sets:", pair_distances.shape)
 with np.printoptions(precision=3, suppress=True):
     print(pair_distances)
 
-theta = 0.8
+theta = 0.91
 
 
 def neighbourhood(x) -> set:
@@ -95,12 +91,13 @@ excluded = []
 
 for ind in list_IndividualNames:
     neigh_set = neighbourhood(ind)
-    if (neigh_set & class_set) == neigh_set:
-        print(neigh_set, class_set)
+    membership = len(neigh_set & class_set)/len(neigh_set)
+    print(membership)
+    if membership == 1.:
         lower_approx.append(ind)
-    elif len(neigh_set & class_set) > 0:
+    if membership > 0:
         upper_approx.append(ind)
-    else:
+    if membership == 0:
         excluded.append(ind)
 
 print("Approximation for concept \"%s\" with theta=%f" % (query, theta))
