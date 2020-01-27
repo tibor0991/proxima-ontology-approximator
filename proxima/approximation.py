@@ -1,8 +1,8 @@
 import pandas as pd
-import scipy
+from scipy.spatial import distance
 import owlready2 as or2
 import numpy as np
-from sklearn import decomposition, preprocessing
+from sklearn import decomposition, preprocessing, metrics
 
 
 def render_colon(e: or2.entity) -> str:
@@ -55,9 +55,20 @@ class SimilarityMeasure:
         """
 
     def __call__(self, a, b):
-        d = scipy.spatial.distance.mahalanobis(a, b, self.iv)
+        d = distance.mahalanobis(a, b, self.iv)
         s = np.exp((-d ** 2) * self.gamma)
         return s
+
+class ContextualSimilarityMeasure:
+    def __init__(self, p=2):
+        self.p = p
+        pass
+
+    def __call__(self, a, b):
+        # assuming a and b are of the same length
+        d = np.power(np.sum(np.power(np.abs(a-b) / len(a), self.p)), 1. / self.p)
+        return 1. - d
+
 
 
 class NeighbourhoodSearcher:
@@ -79,20 +90,6 @@ def inclusion_index(a_set, b_set):
         return len(a_set & b_set) / len(a_set)
     else:
         return 1
-
-
-def get_context_sets(data, context):
-    print(data[context])
-    for name, *row in data[context].itertuples():
-        print(name, ":", row, "=", sum(row) / len(context))
-
-    pseudo_class = [(name, sum(row) / len(context)) for name, *row in data[context].itertuples()]
-
-    definitive = [name for name, value in pseudo_class if value == 1]
-    outside = [name for name, value in pseudo_class if value == 0]
-
-    return set(definitive), set(outside)
-
 
 class ToleranceRoughApproximator:
     """
@@ -174,6 +171,64 @@ class ToleranceRoughApproximator:
                 lower.add(ind_name)
         coverage_index = 1. - inclusion_index(positive, lower)
         return lower, coverage_index
+
+
+from sklearn import cluster
+
+class RbfDistance(a,b, gamma=0.5):
+    def __init__(self, cov):
+        self.iv = np.linalg.inv(cov)
+        self.gamma = 1. / (2 * cov[0, 0])
+
+    def __call__(self, a, b):
+        x = distance.mahalanobis(a, b, IV=self.iv)
+        d = np.exp(-(x**2)*self.gamma)
+        return 1. - d
+
+class ClusterRoughApproximator:
+    def __init__(self, projection_table, variance=0.95):
+        # scale the data
+        scaler = preprocessing.StandardScaler()
+        scaled_data = scaler.fit_transform(projection_table)
+        # print("Shape of the scaled dataset:", scaled_data.shape)
+
+        # apply PCA
+        PCA = decomposition.PCA(variance)
+        pca_data = PCA.fit_transform(scaled_data)
+        # print("Shape of the PCA-transformed dataset:", pca_data.shape)
+
+        # U is the whole set of individuals in the ontology
+        U = pd.DataFrame(pca_data, index=projection_table.index)
+
+        distance_measure = RbfDistance(cov=np.cov(pca_data, rowvar=False))
+
+        clusterer = cluster.OPTICS(min_samples=2, eps=0.05, metric=distance_measure)
+
+        clusterer.fit_predict(U)
+
+        print("Clusters:", set(clusterer.labels_))
+
+        self.clusters = dict()
+        labels = set(clusterer.labels_)
+        labels.remove(-1)
+        for label in labels:
+            self.clusters[label] = set([name for name, label in zip(U.index, clusterer.labels_)])
+
+        for k in self.clusters.keys():
+            print(k, ":", self.clusters[k])
+
+    def __call__(self, positive_set, negative_set):
+        upper = set()
+        lower = set()
+        for label, cluster_set in self.clusters.items():
+            if inclusion_index(cluster_set, positive_set) > 0:
+                upper = upper.union(cluster_set)
+            if inclusion_index(cluster_set, positive_set) == 1:
+                lower = lower.union(cluster_set)
+
+        print("Upper:", upper)
+        print("Lower:", lower)
+        return upper, lower
 
 
 class DataRemapper:

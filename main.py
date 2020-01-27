@@ -17,23 +17,25 @@ if not input_file_path:
 
 remapper = prx.DataRemapper({'TRUE': 1, 'FALSE': 0, 'UNCERTAIN': 0.5})
 # open and load the ontology at the defined filepath
-#onto = or2.get_ontology(input_file_path).load()
+onto = or2.get_ontology(input_file_path).load()
 
 # get the dataframe with the projection
-#proj_table = prx.project_ontology(onto, remapper)
+proj_table = prx.project_ontology(onto, remapper)
 
-proj_table = pd.read_csv(input_file_path, delimiter=";", index_col=0).apply(np.vectorize(remapper))
+# proj_table = pd.read_csv(input_file_path, delimiter=";", index_col=0).apply(np.vectorize(remapper))
 
 # Build an approximator
-approximator = prx.ToleranceRoughApproximator(projection_table=proj_table, variance=0.95)
+#approximator = prx.ToleranceRoughApproximator(projection_table=proj_table, variance=0.95)
+approximator = prx.ClusterRoughApproximator(projection_table=proj_table, variance=0.95)
 
 # provide a set of positive and negative elements
 positive = set([name for name, value in proj_table['wine:Zinfandel'].iteritems() if value == remapper('TRUE')])
 negative = set([name for name, value in proj_table['wine:Wine'].iteritems() if value == remapper('FALSE')])
 
 # modify the set of positive examples in order to fake a less crisp set
-positive.add('wine:MariettaPetiteSyrah')
-positive.add('wine:FormanCabernetSauvignon')
+#positive.add('wine:MariettaPetiteSyrah')
+#positive.add('wine:FormanCabernetSauvignon')
+#positive.remove('wine:ElyseZinfandel')
 
 print("Positive examples:", positive)
 print("Negative examples:", negative)
