@@ -1,46 +1,8 @@
 import pandas as pd
 from scipy.spatial import distance
-import owlready2 as or2
 import numpy as np
-from sklearn import decomposition, preprocessing, metrics
+from sklearn import decomposition, preprocessing
 
-
-def render_colon(e: or2.entity) -> str:
-    return "%s:%s" % (e.namespace.name, e.name)
-
-
-def project_ontology(onto: or2.owl_ontology, remapper=None) -> pd.DataFrame:
-    or2.set_render_func(render_colon)  # WARNING: unset me
-    classes = list(onto.classes())
-    individuals = list(onto.individuals())
-    # print("Classes in ontology (%d):" % len(classes), classes)
-    # print("Individuals in ontology (%d):" % len(individuals), individuals)
-    disjunction_dict = dict()
-    for c in classes:
-        disjunction_dict[c] = set()
-    disjunction_pairs = onto.disjoint_classes()
-    for pair in disjunction_pairs:
-        first, second = pair.entities
-        disjunction_dict[first].add(second)
-        disjunction_dict[second].add(first)
-    projection_table = pd.DataFrame(data='UNCERTAIN', index=list(map(str, individuals)),
-                                    columns=list(map(str, classes)))
-    for c in classes:
-        true_set = set(onto.search(type=c))
-        false_set = set()
-        for not_c in disjunction_dict[c]:
-            false_set = false_set.union(set(onto.search(type=not_c)))
-        false_set = set(map(str, false_set))
-        for t in true_set:
-            projection_table.at[str(t), str(c)] = 'TRUE'
-        for f in false_set:
-            projection_table.at[str(f), str(c)] = 'FALSE'
-    # print(projection_table)
-    or2.set_render_func(or2.default_render_func)  # unsets the render function
-    if remapper:
-        return projection_table.apply(np.vectorize(remapper))
-    else:
-        return projection_table
 
 
 class SimilarityMeasure:
@@ -59,6 +21,7 @@ class SimilarityMeasure:
         s = np.exp((-d ** 2) * self.gamma)
         return s
 
+
 class ContextualSimilarityMeasure:
     def __init__(self, p=2):
         self.p = p
@@ -66,9 +29,8 @@ class ContextualSimilarityMeasure:
 
     def __call__(self, a, b):
         # assuming a and b are of the same length
-        d = np.power(np.sum(np.power(np.abs(a-b) / len(a), self.p)), 1. / self.p)
+        d = np.power(np.sum(np.power(np.abs(a - b) / len(a), self.p)), 1. / self.p)
         return 1. - d
-
 
 
 class NeighbourhoodSearcher:
@@ -90,6 +52,7 @@ def inclusion_index(a_set, b_set):
         return len(a_set & b_set) / len(a_set)
     else:
         return 1
+
 
 class ToleranceRoughApproximator:
     """
@@ -175,14 +138,15 @@ class ToleranceRoughApproximator:
 
 from sklearn import cluster
 
-class RbfDistance(a,b, gamma=0.5):
+
+class RbfDistance:
     def __init__(self, cov):
         self.iv = np.linalg.inv(cov)
         self.gamma = 1. / (2 * cov[0, 0])
 
     def __call__(self, a, b):
         x = distance.mahalanobis(a, b, IV=self.iv)
-        d = np.exp(-(x**2)*self.gamma)
+        d = np.exp(-(x ** 2) * self.gamma)
         return 1. - d
 
 class ClusterRoughApproximator:
@@ -229,11 +193,3 @@ class ClusterRoughApproximator:
         print("Upper:", upper)
         print("Lower:", lower)
         return upper, lower
-
-
-class DataRemapper:
-    def __init__(self, values_dict):
-        self.values_dict = values_dict
-
-    def __call__(self, value):
-        return self.values_dict[value]

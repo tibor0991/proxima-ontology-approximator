@@ -1,12 +1,12 @@
 import numpy as np
-
-import proxima
 import owlready2 as or2
 import tkinter
 from tkinter import filedialog
+
 import pandas as pd
 
-from proxima import approximation as prx
+from proxima import approximation, ontology
+from os import path
 
 tkinter.Tk().withdraw()
 input_file_path = tkinter.filedialog.askopenfilename()
@@ -15,27 +15,17 @@ input_file_path = tkinter.filedialog.askopenfilename()
 if not input_file_path:
     exit()
 
-remapper = prx.DataRemapper({'TRUE': 1, 'FALSE': 0, 'UNCERTAIN': 0.5})
-# open and load the ontology at the defined filepath
-onto = or2.get_ontology(input_file_path).load()
-
-# get the dataframe with the projection
-proj_table = prx.project_ontology(onto, remapper)
-
-# proj_table = pd.read_csv(input_file_path, delimiter=";", index_col=0).apply(np.vectorize(remapper))
+onto_mgr = ontology.OntologyManager(input_file_path)
 
 # Build an approximator
-#approximator = prx.ToleranceRoughApproximator(projection_table=proj_table, variance=0.95)
-approximator = prx.ClusterRoughApproximator(projection_table=proj_table, variance=0.95)
+approximator = approximation.ToleranceRoughApproximator(projection_table=onto_mgr.projection_table, variance=0.95)
 
 # provide a set of positive and negative elements
-positive = set([name for name, value in proj_table['wine:Zinfandel'].iteritems() if value == remapper('TRUE')])
-negative = set([name for name, value in proj_table['wine:Wine'].iteritems() if value == remapper('FALSE')])
+positive = onto_mgr.get_individuals('wine:Zinfandel', 'TRUE')
+negative = onto_mgr.get_individuals('wine:Wine', 'FALSE')
 
 # modify the set of positive examples in order to fake a less crisp set
-#positive.add('wine:MariettaPetiteSyrah')
-#positive.add('wine:FormanCabernetSauvignon')
-#positive.remove('wine:ElyseZinfandel')
+# TODO: this, but with individuals instead of names
 
 print("Positive examples:", positive)
 print("Negative examples:", negative)
@@ -43,5 +33,5 @@ print("Negative examples:", negative)
 # Run the approximator with the given example sets
 upper, lower = approximator(positive, negative)
 
-
+onto_mgr.insert_approximated_concept('SelectWine', upper, lower) # TODO: this does not work yet!!!
 
