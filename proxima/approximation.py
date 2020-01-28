@@ -4,7 +4,6 @@ import numpy as np
 from sklearn import decomposition, preprocessing
 
 
-
 class SimilarityMeasure:
     def __init__(self, covariance_matrix):
         self.iv = np.linalg.inv(covariance_matrix)
@@ -46,7 +45,7 @@ class NeighbourhoodSearcher:
         return nh
 
 
-def inclusion_index(a_set, b_set):
+def rough_membership(a_set, b_set):
     # Szymkiewicz-Simpson coefficient, modified to check only for "A ⊆ B"
     if a_set:
         return len(a_set & b_set) / len(a_set)
@@ -54,28 +53,20 @@ def inclusion_index(a_set, b_set):
         return 1
 
 
-class ToleranceRoughApproximator:
-    """
-    -Inclusion index
-    -Neighbourhood function
-    -Similarity Relation
-    -Positive examples (and negative examples)
+class ToleranceApproximator:
+    def __init__(self):
+        self.U = None
+        self.similarity = None
+        self.neighbourhood = None
 
-    """
-
-    def __init__(self, projection_table, variance=0.95, metric='mahalanobis'):
-        # builds the U dataset, components x samples
-        # print("Shape of the original dataset:", projection_table.shape)
-
+    def fit(self, projection_table, variance=0.95):
         # scale the data
         scaler = preprocessing.StandardScaler()
         scaled_data = scaler.fit_transform(projection_table)
-        # print("Shape of the scaled dataset:", scaled_data.shape)
 
         # apply PCA
         PCA = decomposition.PCA(variance)
         pca_data = PCA.fit_transform(scaled_data)
-        # print("Shape of the PCA-transformed dataset:", pca_data.shape)
 
         # get the covariance matrix from the PCA mapped space
         covariance = np.cov(pca_data, rowvar=False)
@@ -84,12 +75,10 @@ class ToleranceRoughApproximator:
         # U is the whole set of individuals in the ontology
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
         self.neighbourhood = NeighbourhoodSearcher(self.U, self.similarity)
-        pass
 
-    def __call__(self, positive_examples, negative_examples, n_samples=10):
+    def approximate(self, positive_examples, negative_examples, n_samples=10):
         upper = set()
         lower = set()
-        # heuristic rule #1: the lower theta will be always higher than the upper theta
         # upper theta: the minimum theta at which the consistency error on the upper approximation is at its lowest
         # lower theta: the minimum theta at which the lower approximation covers the most of the positive examples set
         theta_u = 0.
@@ -114,28 +103,32 @@ class ToleranceRoughApproximator:
 
         return upper, lower
 
+    def __call__(self, positive_examples, negative_examples, n_samples=10):
+        return self.approximate(positive_examples, negative_examples, n_samples)
+
     def _get_upper(self, positive, negative, theta_u):
         upper = set()
         for ind_name, *ind_data in self.U.itertuples():
             neigh_set = self.neighbourhood(ind_data, theta_u)
-            membership = inclusion_index(neigh_set, positive)
+            membership = rough_membership(neigh_set, positive)
             if membership > 0:
                 upper.add(ind_name)
 
-        consistency_error = inclusion_index(upper, negative)
+        consistency_error = rough_membership(upper, negative)
         return upper, consistency_error
 
     def _get_lower(self, positive, theta_l):  # code smell here: can I avoid replicating code?
         lower = set()
         for ind_name, *ind_data in self.U.itertuples():
             neigh_set = self.neighbourhood(ind_data, theta_l)
-            membership = inclusion_index(neigh_set, positive)
+            membership = rough_membership(neigh_set, positive)
             if membership == 1:
                 lower.add(ind_name)
-        coverage_index = 1. - inclusion_index(positive, lower)
+        coverage_index = 1. - rough_membership(positive, lower)
         return lower, coverage_index
 
 
+"""
 from sklearn import cluster
 
 
@@ -193,3 +186,4 @@ class ClusterRoughApproximator:
         print("Upper:", upper)
         print("Lower:", lower)
         return upper, lower
+"""
