@@ -40,7 +40,8 @@ class NeighbourhoodSearcher:
     def __call__(self, x, theta) -> set:
         nh = set()
         for name, *y in self.U.itertuples():
-            if self.sim(x, y) >= theta:
+            d = self.sim(x, y)
+            if d >= theta:
                 nh.add(name)
         return nh
 
@@ -56,7 +57,6 @@ def rough_membership(a_set, b_set):
 class ToleranceApproximator:
     def __init__(self):
         self.U = None
-        self.similarity = None
         self.neighbourhood = None
 
     def fit(self, projection_table, variance=0.95):
@@ -70,62 +70,35 @@ class ToleranceApproximator:
 
         # get the covariance matrix from the PCA mapped space
         covariance = np.cov(pca_data, rowvar=False)
-        self.similarity = SimilarityMeasure(covariance_matrix=covariance)
-
+        similarity = SimilarityMeasure(covariance_matrix=covariance)
         # U is the whole set of individuals in the ontology
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
-        self.neighbourhood = NeighbourhoodSearcher(self.U, self.similarity)
+        self.neighbourhood = NeighbourhoodSearcher(self.U, similarity)
 
-    def approximate(self, positive_examples, negative_examples, n_samples=10):
+    def approximate(self, positive_examples, negative_examples, n_samples=None, theta=None):
+        """
+
+        :param positive_examples:   list of positive examples (provided as strings)
+        :param negative_examples:   list of negative examples (provided as strings)
+        :param n_samples:           if set, attempts to learn a better theta
+        :param theta:               range of neighbourhood function
+        :return:
+        """
         upper = set()
         lower = set()
-        # upper theta: the minimum theta at which the consistency error on the upper approximation is at its lowest
-        # lower theta: the minimum theta at which the lower approximation covers the most of the positive examples set
-        theta_u = 0.
-        last_index = 0
-        sample_points = np.linspace(0., 1., n_samples + 1)
-        for sample_index, sample in enumerate(sample_points):
-            theta_u = sample
-            upper, error_u = self._get_upper(positive_examples, negative_examples, sample)
-            last_index = sample_index
-            if error_u == 0:
-                break
-        theta_l = 0.
-        sample_points = np.linspace(theta_u, 1., n_samples + 1 - last_index)
-        for sample in sample_points:
-            theta_l = sample
-            lower, error_l = self._get_lower(positive_examples, sample)
-            if error_l == 0:
-                break
-
-        print("Lower theta:", theta_l, lower)
-        print("Upper theta:", theta_u, upper)
+        if theta is not None:
+            for ind_name, *ind_data in self.U.itertuples():
+                neigh_set = self.neighbourhood(ind_data, theta)
+                membership = rough_membership(neigh_set, positive_examples)
+                if membership > 0:
+                    upper.add(ind_name)
+                if membership == 1:
+                    lower.add(ind_name)
 
         return upper, lower
 
-    def __call__(self, positive_examples, negative_examples, n_samples=10):
+    def __call__(self, positive_examples, negative_examples, n_samples=None):
         return self.approximate(positive_examples, negative_examples, n_samples)
-
-    def _get_upper(self, positive, negative, theta_u):
-        upper = set()
-        for ind_name, *ind_data in self.U.itertuples():
-            neigh_set = self.neighbourhood(ind_data, theta_u)
-            membership = rough_membership(neigh_set, positive)
-            if membership > 0:
-                upper.add(ind_name)
-
-        consistency_error = rough_membership(upper, negative)
-        return upper, consistency_error
-
-    def _get_lower(self, positive, theta_l):  # code smell here: can I avoid replicating code?
-        lower = set()
-        for ind_name, *ind_data in self.U.itertuples():
-            neigh_set = self.neighbourhood(ind_data, theta_l)
-            membership = rough_membership(neigh_set, positive)
-            if membership == 1:
-                lower.add(ind_name)
-        coverage_index = 1. - rough_membership(positive, lower)
-        return lower, coverage_index
 
 
 """

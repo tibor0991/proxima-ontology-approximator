@@ -16,37 +16,49 @@ class DataRemapper:
     def __call__(self, value):
         return self.values_dict[value]
 
+
 _PT_UNCERTAIN = 'UNCERTAIN'
 _PT_TRUE = 'TRUE'
 _PT_FALSE = 'FALSE'
 
 default_remapper = DataRemapper({_PT_TRUE: 1, _PT_FALSE: 0, _PT_UNCERTAIN: 0.5})
 
-
 class OntologyManager:
-    def __init__(self, path, remapper=default_remapper):
+    def __init__(self, path, render_func=render_colon):
+        # sets the global render func
+        or2.set_render_func(render_func)
         # loads an ontology and stores classes and individuals in two dictionaries
-        or2.set_render_func(render_colon)  # WARNING: unset me
         onto = or2.get_ontology(path).load()
         classes = {str(c): c for c in onto.classes()}
         individuals = {str(i): i for i in onto.individuals()}
 
+        # or2.set_render_func(or2.default_render_func)  # unsets the render function
+
+        # saves the variables in the object
+        self.onto = onto
+        self.projection_table = None
+        self.classes = classes
+        self.individuals = individuals
+
+    def build_table(self, use_reasoner=False):
         # build the projection table
-        projection_table = pd.DataFrame(data=_PT_UNCERTAIN, index=individuals.keys(),
-                                        columns=classes.keys())
+        projection_table = pd.DataFrame(data=_PT_UNCERTAIN, index=self.individuals.keys(),
+                                        columns=self.classes.keys())
         # run the reasoner
-        with onto:
-            or2.sync_reasoner_pellet()
+        if use_reasoner:
+            with self.onto:
+                or2.sync_reasoner_pellet()
+                pass
 
         # build the disjunction lookup dict
-        disjunctions = {str(c): set() for c in onto.classes()}
-        for pair in onto.disjoint_classes():
+        disjunctions = {c: set() for c in self.classes.keys()}
+        for pair in self.onto.disjoint_classes():
             first, second = pair.entities
             disjunctions[str(first)].add(second)
             disjunctions[str(second)].add(first)
 
         # faster method
-        for c_name, c in classes.items():
+        for c_name, c in self.classes.items():
             true_set = set(c.instances())
             false_set = set()
             for d in disjunctions[c_name]:
@@ -57,16 +69,14 @@ class OntologyManager:
             for f in false_set:
                 projection_table.at[str(f), c_name] = _PT_FALSE
         # 6.9 seconds for .instances() method
-        projection_table = projection_table.apply(np.vectorize(remapper))
-
-        or2.set_render_func(or2.default_render_func)  # unsets the render function
-
-        # saves the variables in the object
-        self.onto = onto
         self.projection_table = projection_table
-        self.classes = classes
-        self.individuals = individuals
-        self.remapper = remapper
+        pass
+
+    def load_table(self, path_to_table):
+        self.projection_table = pd.read_csv(path_to_table, delimiter=";", index_col=0)
+
+    def get_mapped_table(self, remapper=default_remapper):
+        return self.projection_table.apply(np.vectorize(remapper))
 
     def insert_approximated_concept(self, concept_name, upper_elements, lower_elements):
         """
@@ -91,12 +101,26 @@ class OntologyManager:
             u_element.is_a.append(UpperClass)
 
         for l_element in lower_elements:
-            u_element.is_a.append(LowerClass)
+            l_element.is_a.append(LowerClass)
 
-    def search_individuals(self, class_name, requested_value):
-        series = self.projection_table[class_name]
-        remap_value = self.remapper(requested_value)
-        return [self.individuals[name] for name, value in series.iteritems() if value == remap_value]
+    def search_individuals(self, class_name=None, requested_value=None, names=None, as_strings=False):
+        if as_strings:
+            retrieval_func = lambda x: x
+        else:
+            retrieval_func = lambda x: self.individuals[x]
+
+        if (class_name is not None) and (requested_value is not None):  #search by class and value
+            series = self.projection_table[class_name]
+            return set([retrieval_func(name) for name, value in series.iteritems() if value == requested_value])
+
+        if names is not None:   #get specific names
+            return set([retrieval_func(name) for name in names])
+
+    def export_ontology(self, path, name):
+        
+        self.onto.save(path)
+
+    #TODO: evaluate whether it's better to return a generator rather than either a list or a set
 
 if __name__ == '__main__':
 
