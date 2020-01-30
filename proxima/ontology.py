@@ -3,9 +3,6 @@ import pandas as pd
 import numpy as np
 import types
 
-import time
-
-
 def render_colon(e: or2.entity) -> str:
     return "%s:%s" % (e.namespace.name, e.name)
 
@@ -93,17 +90,26 @@ class OntologyManager:
         upper_name = "Possibly" + concept_name
         lower_name = "Definitively" + concept_name
         # add the classes to the ontology
-        UpperClass = types.new_class(upper_name, (or2.Thing,))
-        LowerClass = types.new_class(lower_name, (UpperClass,))
+        with self.onto:
+            UpperClass = types.new_class(upper_name, (or2.Thing,))
+            LowerClass = types.new_class(lower_name, (UpperClass,))
 
-        # for each individual, add a relation to either or both classes
-        for u_element in upper_elements:
-            u_element.is_a.append(UpperClass)
+            # for each individual, add a relation to either or both classes
+            for u_element in upper_elements:
+                u_element.is_a.append(UpperClass)
 
-        for l_element in lower_elements:
-            l_element.is_a.append(LowerClass)
+            for l_element in lower_elements:
+                l_element.is_a.append(LowerClass)
 
     def search_individuals(self, class_name=None, requested_value=None, names=None, as_strings=False):
+        """
+        Warning: calling this function with names set and as_strings equal to True is pointless.
+        :param class_name:
+        :param requested_value:
+        :param names:
+        :param as_strings:
+        :return:
+        """
         if as_strings:
             retrieval_func = lambda x: x
         else:
@@ -116,11 +122,17 @@ class OntologyManager:
         if names is not None:   #get specific names
             return set([retrieval_func(name) for name in names])
 
-    def export_ontology(self, path, name):
-        
+    def export_ontology(self, path):
         self.onto.save(path)
 
-    #TODO: evaluate whether it's better to return a generator rather than either a list or a set
+    def get_coverage(self, examples):
+        coverage = set()
+        inds = self.search_individuals(names=examples)
+        for e in inds:
+            for c in e.is_a:
+                coverage.add(str(c))
+        # eventually refine the coverage
+        return coverage
 
 if __name__ == '__main__':
 
