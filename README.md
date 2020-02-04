@@ -1,2 +1,2 @@
 # proxima-ontology-approximator
-A method to learn rough approximations of a concept in an ontology.
+A Python module to deal with rough approximations of concepts in an ontology.
