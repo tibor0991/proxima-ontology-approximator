@@ -3,8 +3,10 @@ import pandas as pd
 import numpy as np
 import types
 
+
 def render_colon(e: or2.entity) -> str:
     return "%s:%s" % (e.namespace.name, e.name)
+
 
 class DataRemapper:
     def __init__(self, values_dict):
@@ -19,6 +21,7 @@ _PT_TRUE = 'TRUE'
 _PT_FALSE = 'FALSE'
 
 default_remapper = DataRemapper({_PT_TRUE: 1, _PT_FALSE: 0, _PT_UNCERTAIN: 0.5})
+
 
 class OntologyManager:
     def __init__(self, path, render_func=render_colon):
@@ -60,7 +63,6 @@ class OntologyManager:
             false_set = set()
             for d in disjunctions[c_name]:
                 false_set = false_set.union(d.instances())
-
             for t in true_set:
                 projection_table.at[str(t), c_name] = _PT_TRUE
             for f in false_set:
@@ -92,6 +94,8 @@ class OntologyManager:
         # add the classes to the ontology
         with self.onto:
             UpperClass = types.new_class(upper_name, (or2.Thing,))
+            SuperUpperClasses = self.get_coverage(upper_elements)
+            UpperClass.is_a = SuperUpperClasses
             LowerClass = types.new_class(lower_name, (UpperClass,))
 
             # for each individual, add a relation to either or both classes
@@ -115,11 +119,11 @@ class OntologyManager:
         else:
             retrieval_func = lambda x: self.individuals[x]
 
-        if (class_name is not None) and (requested_value is not None):  #search by class and value
+        if (class_name is not None) and (requested_value is not None):  # search by class and value
             series = self.projection_table[class_name]
             return set([retrieval_func(name) for name, value in series.iteritems() if value == requested_value])
 
-        if names is not None:   #get specific names
+        if names is not None:  # get specific names
             return set([retrieval_func(name) for name in names])
 
     def export_ontology(self, path):
@@ -127,18 +131,23 @@ class OntologyManager:
 
     def get_coverage(self, examples):
         coverage = set()
-        inds = self.search_individuals(names=examples)
-        for e in inds:
+        for e in examples:
             for c in e.is_a:
                 coverage.add(str(c))
-        # eventually refine the coverage
-        return coverage
+        return [v for k,v in self.classes.items() if k in coverage]
+
 
 if __name__ == '__main__':
-
     ont_mgr = OntologyManager(r"C:\Users\Gianf\Dropbox\Tesi\Ontologie\wine_disjoints.owl")
-    csv_table = pd.read_csv(r"C:\Users\Gianf\Dropbox\Tesi\newTable.csv", delimiter=";", index_col=0).apply(np.vectorize(default_remapper))
-    df1 = csv_table.sort_index()
-    df2 = ont_mgr.projection_table[csv_table.columns].sort_index()
+    o = ont_mgr.onto
 
-    print(df1.equals(df2))
+    with o:
+        class Negator(or2.Thing):
+            equivalent_to = or2.Nothing
+
+    for c in o.classes():
+        print("Things that are %s:" % c, c.instances())
+        Negator.equivalent_to = [or2.Not(c)]
+        or2.AllDisjoint([Negator, c])
+        or2.sync_reasoner_pellet()
+        print("Things that are not %s:" % c, Negator.instances())
