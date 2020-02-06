@@ -21,110 +21,104 @@ _PT_TRUE = 'TRUE'
 _PT_FALSE = 'FALSE'
 
 default_remapper = DataRemapper({_PT_TRUE: 1, _PT_FALSE: 0, _PT_UNCERTAIN: 0.5})
-
+# sets the global render func
+or2.set_render_func(render_colon)
 
 class OntologyManager:
-    def __init__(self, path, render_func=render_colon):
-        # sets the global render func
-        or2.set_render_func(render_func)
+    def __init__(self, path):
         # loads an ontology and stores classes and individuals in two dictionaries
-        onto = or2.get_ontology(path).load()
-        classes = {str(c): c for c in onto.classes()}
-        individuals = {str(i): i for i in onto.individuals()}
-
-        # or2.set_render_func(or2.default_render_func)  # unsets the render function
+        _onto = or2.get_ontology(path).load()
+        _classes = {str(c): c for c in _onto.classes()}
+        _individuals = {str(i): i for i in _onto.individuals()}
 
         # saves the variables in the object
-        self.onto = onto
+        self.onto = _onto
         self.projection_table = None
-        self.classes = classes
-        self.individuals = individuals
+        self.classes = _classes
+        self.individuals = _individuals
 
-    def build_table(self, use_reasoner=False):
+    def build_table(self, **kwargs):
         # build the projection table
-        projection_table = pd.DataFrame(data=_PT_UNCERTAIN, index=self.individuals.keys(),
-                                        columns=self.classes.keys())
+        _table = pd.DataFrame(data=_PT_UNCERTAIN, index=self.individuals.keys(), columns=self.classes.keys())
         # run the reasoner
+        use_reasoner = kwargs['use_reasoner'] or False
         if use_reasoner:
             with self.onto:
+                # runs a consistency check
                 or2.sync_reasoner_pellet()
                 pass
 
-        # build the disjunction lookup dict
-        disjunctions = {c: set() for c in self.classes.keys()}
-        for pair in self.onto.disjoint_classes():
-            first, second = pair.entities
-            disjunctions[str(first)].add(second)
-            disjunctions[str(second)].add(first)
+        projection_mode = kwargs['mode'] or 'disjunction'
 
-        # faster method
-        for c_name, c in self.classes.items():
-            true_set = set(c.instances())
-            false_set = set()
-            for d in disjunctions[c_name]:
-                false_set = false_set.union(d.instances())
+        if projection_mode == 'disjunction':
+            # builds the disjunction lookup dict
+            disjunctions = {c: set() for c in self.classes.keys()}
+            for pair in self.onto.disjoint_classes():
+                first, second = pair.entities
+                disjunctions[str(first)].add(second)
+                disjunctions[str(second)].add(first)
+
+            # faster method
+            for c_name, c in self.classes.items():
+                true_set = set(c.instances())
+                false_set = set()
+                for d in disjunctions[c_name]:
+                    false_set = false_set.union(d.instances())
+                for t in true_set:
+                    _table.at[str(t), c_name] = _PT_TRUE
+                for f in false_set:
+                    _table.at[str(f), c_name] = _PT_FALSE
+
+        elif projection_mode == 'from_file':
+            table_path = kwargs['table_path']
+            if table_path:
+                _table = pd.read_csv(table_path, delimiter=";", index_col=0)
+            else:
+                raise
+
+        elif projection_mode == 'reasoner':
+            #check if __fast__ reasoning is enabled
+            fast_build = kwargs['use_fast_reasoning'] or False
+            # list that holds all the references to the not_ classes
+            classes_with_complements = []
+            with self.onto:
+                for c_name, c_item in self.classes.items():
+                    neg_class = types.new_class('NOT_' + c_item.name, (or2.Thing,))
+                    neg_class.equivalent_to = [or2.Not(c_item)]
+                    if fast_build:
+                        or2.AllDisjoint([c_item, neg_class])
+                    classes_with_complements.append((c_name, c_item, neg_class))
+
+            # run the reasoner
+            with self.onto:
+                or2.sync_reasoner_pellet()
+
+            # sets the cells with the respective value
+            for c_name, c, not_c in classes_with_complements:
+                true_set = set(c.instances())
+                false_set = set(not_c.instances())
+
             for t in true_set:
-                projection_table.at[str(t), c_name] = _PT_TRUE
+                _table.at[str(t), c_name] = _PT_TRUE
             for f in false_set:
-                projection_table.at[str(f), c_name] = _PT_FALSE
-        # 6.9 seconds for .instances() method
-        self.projection_table = projection_table
+                _table.at[str(f), c_name] = _PT_FALSE
+
+        # assigns the newly-built table to the inner parameter
+        self.projection_table = _table
         pass
 
-    def load_table(self, path_to_table):
-        self.projection_table = pd.read_csv(path_to_table, delimiter=";", index_col=0)
+    def export_table(self, path_to_csv):
+        self.projection_table.to_csv(path_to_csv, header=True)
+        return
 
     def get_mapped_table(self, remapper=default_remapper):
         return self.projection_table.apply(np.vectorize(remapper))
 
     def insert_approximated_concept(self, concept_name, upper_elements, lower_elements):
-        """
-        Inserts a pair of classes which represent an approximate concept in the form of C = < U, L >, where:
-        - C is the approximate concept
-        - U is the Upper approximation of C (named as "Possibly"+[base concept name] )
-        - L is the Uower approximation of C (named as "Definitively"+[base_concept_name] )
-        :param concept_name: Base name of the approximate concept
-        :param upper_elements: sets of individuals that belong to the upper approximation
-        :param lower_elements: sets of individuals that belong to the lower approximation
-        :return: The modified ontology O'
-        """
-        # build the two approximation classes
-        upper_name = "Possibly" + concept_name
-        lower_name = "Definitively" + concept_name
-        # add the classes to the ontology
-        with self.onto:
-            UpperClass = types.new_class(upper_name, (or2.Thing,))
-            SuperUpperClasses = self.get_coverage(upper_elements)
-            UpperClass.is_a = SuperUpperClasses
-            LowerClass = types.new_class(lower_name, (UpperClass,))
-
-            # for each individual, add a relation to either or both classes
-            for u_element in upper_elements:
-                u_element.is_a.append(UpperClass)
-
-            for l_element in lower_elements:
-                l_element.is_a.append(LowerClass)
+        raise NotImplementedError()
 
     def search_individuals(self, class_name=None, requested_value=None, names=None, as_strings=False):
-        """
-        Warning: calling this function with names set and as_strings equal to True is pointless.
-        :param class_name:
-        :param requested_value:
-        :param names:
-        :param as_strings:
-        :return:
-        """
-        if as_strings:
-            retrieval_func = lambda x: x
-        else:
-            retrieval_func = lambda x: self.individuals[x]
-
-        if (class_name is not None) and (requested_value is not None):  # search by class and value
-            series = self.projection_table[class_name]
-            return set([retrieval_func(name) for name, value in series.iteritems() if value == requested_value])
-
-        if names is not None:  # get specific names
-            return set([retrieval_func(name) for name in names])
+        raise NotImplementedError()
 
     def export_ontology(self, path):
         self.onto.save(path)
@@ -134,20 +128,17 @@ class OntologyManager:
         for e in examples:
             for c in e.is_a:
                 coverage.add(str(c))
-        return [v for k,v in self.classes.items() if k in coverage]
+        return [v for k, v in self.classes.items() if k in coverage]
 
 
 if __name__ == '__main__':
-    ont_mgr = OntologyManager(r"C:\Users\Gianf\Dropbox\Tesi\Ontologie\wine_disjoints.owl")
-    o = ont_mgr.onto
+    import tkinter
+    from tkinter import filedialog
 
-    with o:
-        class Negator(or2.Thing):
-            equivalent_to = or2.Nothing
+    tkinter.Tk().withdraw()
+    onto_load_path = tkinter.filedialog.askopenfilename(title="Select an OWL ontology file:")
+    ont_mgr = OntologyManager(onto_load_path)
 
-    for c in o.classes():
-        print("Things that are %s:" % c, c.instances())
-        Negator.equivalent_to = [or2.Not(c)]
-        or2.AllDisjoint([Negator, c])
-        or2.sync_reasoner_pellet()
-        print("Things that are not %s:" % c, Negator.instances())
+    ont_mgr.build_table(use_reasoner=True)
+    export_disjoint = tkinter.filedialog.asksaveasfilename(defaultextension=".csv")
+    ont_mgr.export_table(export_disjoint)

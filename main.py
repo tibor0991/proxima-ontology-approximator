@@ -1,8 +1,5 @@
 import tkinter
 from tkinter import filedialog
-
-import pandas as pd
-
 from proxima import approximation, ontology
 
 tkinter.Tk().withdraw()
