@@ -1,2 +1,2 @@
-# rough-concepts-learner
-A method to learn rough approximations of a concept in an ontology.
+# proxima-ontology-approximator
+A Python module to deal with rough approximations of concepts in an ontology.
