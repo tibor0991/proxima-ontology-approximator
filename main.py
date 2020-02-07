@@ -22,27 +22,22 @@ else:
 
 # Build an approximator
 approximator = approximation.ToleranceApproximator()
-approximator.fit(onto_mgr.get_mapped_table())
 
 # provide a set of positive and negative elements
-positive = onto_mgr.search_individuals(class_name='wine:Zinfandel', requested_value='TRUE', as_strings=True)
+positive_names = set(onto_mgr.get_individuals(mode='by_class', class_name='wine:Zinfandel', value='TRUE', as_strings=True))
 
 # modify the set of positive examples in order to fake a less crisp set
-positive.add('wine:LongridgeMerlot')
+positive_names.add('wine:LongridgeMerlot')
 
-
+positive = list(onto_mgr.get_individuals(mode='by_names', names=positive_names))
 
 # print the positive and negative sets
 print("Positive examples:", positive)
 
 # Run the approximator with the given example sets
-upper_names, lower_names = approximator.approximate(positive, theta=0.8)
+upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, approximator, theta=0.6)
 
-upper = onto_mgr.search_individuals(names=upper_names)
-lower = onto_mgr.search_individuals(names=lower_names)
-
-print("Upper approx:", upper_names, "\n", "Lower approx:", lower_names)
-onto_mgr.insert_approximated_concept('SelectWine', upper, lower)
+print("Upper approx:", upper, "\n\r", "Lower approx:", lower)
 
 output_file = tkinter.filedialog.asksaveasfilename(defaultextension=".owl")
 onto_mgr.export_ontology(output_file)

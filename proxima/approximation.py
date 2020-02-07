@@ -59,15 +59,14 @@ class ToleranceApproximator:
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
         self.neighbourhood = NeighbourhoodSearcher(self.U, similarity)
 
-    def approximate(self, examples, theta):
+    def approximate(self, examples, theta, beta=1.):
         upper = set()
         lower = set()
         for ind_name, *ind_data in self.U.itertuples():
             neigh_set = self.neighbourhood(ind_data, theta)
-            membership = rough_membership(neigh_set, examples)
+            membership = rough_membership(neigh_set, examples, beta)
             if membership > 0:
                 upper.add(ind_name)
             if membership == 1:
                 lower.add(ind_name)
-
         return upper, lower

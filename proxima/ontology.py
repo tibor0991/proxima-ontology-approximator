@@ -22,7 +22,7 @@ _PT_FALSE = 'FALSE'
 
 default_remapper = DataRemapper({_PT_TRUE: 1, _PT_FALSE: 0, _PT_UNCERTAIN: 0.5})
 # sets the global render func
-# or2.set_render_func(render_colon)
+or2.set_render_func(render_colon)
 
 
 class OntologyManager:
@@ -39,6 +39,17 @@ class OntologyManager:
         self.individuals = _individuals
 
     def build_table(self, **kwargs):
+        """
+        Builds (or loads) the projection table with the given parameters.
+
+        :key use_reasoner: shall a consistency check be run before building the projection table? (default is False)
+        :key mode: specifies how the projection table must be built:
+            - 'disjunction': The projection value is computed by looking up the disjunction pairs (faster, but prone to errors);
+            - 'from_file': The projection table is loaded from the path provided in the 'table_path' key;
+            - 'reasoner': The table is built using the results obtained from the reasoner (slowest but correct).
+        :key table_path: if mode = 'from_file', specifies the file path from which the table must be loaded
+        :return:
+        """
         # build the projection table
         _table = pd.DataFrame(data=_PT_UNCERTAIN, index=self.individuals.keys(), columns=self.classes.keys())
         # run the reasoner
@@ -49,7 +60,7 @@ class OntologyManager:
                 or2.sync_reasoner_pellet()
                 pass
 
-        projection_mode = kwargs.get('mode') or 'disjunction'
+        projection_mode = kwargs.get('mode') or 'reasoner'
 
         if projection_mode == 'disjunction':
             # builds the disjunction lookup dict
@@ -76,7 +87,7 @@ class OntologyManager:
                 _table = pd.read_csv(table_path, delimiter=";", index_col=0)
             else:
                 raise
-
+        # Build using the reasoner
         elif projection_mode == 'reasoner':
             # list that holds all the references to the not_ classes
             classes_with_complements = []
@@ -99,6 +110,8 @@ class OntologyManager:
                     _table.at[str(t), c_name] = _PT_TRUE
                 for f in false_set:
                     _table.at[str(f), c_name] = _PT_FALSE
+        else:
+            raise Exception("ERROR: Unrecognized mode '%s'." % projection_mode)
 
         # assigns the newly-built table to the inner parameter
         self.projection_table = _table
@@ -119,17 +132,14 @@ class OntologyManager:
 
     def insert_approximated_concept(self, concept_name, upper_set, lower_set, LCS_construct):
         with self.onto:
-            LCS = types.new_class("LCS_"+concept_name, (or2.Thing,))
-            LCS.equivalent_to = LCS_construct
-            UpperClass = types.new_class("Possibly_"+concept_name, (LCS,))
-            LowerClass = types.new_class("Definitively_"+concept_name, (UpperClass,))
+            _upperClass = types.new_class("Possibly_"+concept_name, (or2.Thing,))
+            _upperClass.is_a = [LCS_construct]  # LCS subsumes upper approximation
+            _lowerClass = types.new_class("Definitively_"+concept_name, (_upperClass,))
 
             for u in upper_set:
-                u.is_a.append(UpperClass)
+                u.is_a.append(_upperClass)
             for l in lower_set:
-                l.is_a.append(LowerClass)
-
-            or2.sync_reasoner_pellet()
+                l.is_a.append(_lowerClass)
 
     def get_individuals(self, mode, **kwargs):
         if mode == 'by_class':
@@ -165,35 +175,12 @@ class OntologyManager:
         equivalence_construct = or2.Or(coverage)
         return equivalence_construct
 
-
-
-if __name__ == '__main__':
-    import sys
-    import tkinter
-    from tkinter import filedialog
-
-    tkinter.Tk().withdraw()
-    onto_load_path = tkinter.filedialog.askopenfilename(title="Select an OWL ontology file:")
-    ont_mgr = OntologyManager(onto_load_path)
-
-    if 'LCS_test' in sys.argv:
-        csv_path = tkinter.filedialog.askopenfilename(title="Select a CSV table file:")
-        ont_mgr.build_table(mode='from_file', table_path=csv_path)
-        ex = list(ont_mgr.get_individuals(mode='by_class', class_name='wine.Zinfandel', value='TRUE'))
-        print("Does it retrieve the examples?", ex)
-        LCS = ont_mgr.get_LCS_construct(ex)
-        print(LCS)
-        LCS_set = list(ont_mgr.onto.search(type=LCS))
-        ont_mgr.insert_approximated_concept('Zinfandel', ex, ex, LCS)
-        output_file = tkinter.filedialog.asksaveasfilename(defaultextension=".owl")
-        ont_mgr.export_ontology(output_file)
-        exit()
-
-
-
-
-
-    # csv_path = tkinter.filedialog.askopenfilename(title="Select a CSV table file:")
-    export_disjoint = tkinter.filedialog.asksaveasfilename(defaultextension=".csv", filetypes=(('CSV record', '.csv'),))
-    ont_mgr.build_table(mode='reasoner', use_fast_reasoning=True)
-    ont_mgr.export_table(export_disjoint)
+    def approximate_concept(self, name, examples, approximator, theta):
+        concept_set = set([str(ex) for ex in examples])
+        approximator.fit(self.get_mapped_table())
+        upper_names, lower_names = approximator.approximate(concept_set, theta)
+        upper = [ind for name, ind in self.individuals.items() if name in upper_names]
+        lower = [ind for name, ind in self.individuals.items() if name in lower_names]
+        eq_construct = self.get_LCS_construct(examples)
+        self.insert_approximated_concept(name, upper, lower, eq_construct)
+        return upper, lower
