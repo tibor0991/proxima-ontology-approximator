@@ -16,9 +16,9 @@ load_from_file = True
 
 if load_from_file:
     table_path = tkinter.filedialog.askopenfilename(title="Select a prebuilt projection table:")
-    onto_mgr.load_table(table_path)
+    onto_mgr.build_table(mode='from_file', table_path=table_path)
 else:
-    onto_mgr.build_table(use_reasoner=False)
+    onto_mgr.build_table(use_reasoner=True)
 
 # Build an approximator
 approximator = approximation.ToleranceApproximator()
@@ -26,19 +26,17 @@ approximator.fit(onto_mgr.get_mapped_table())
 
 # provide a set of positive and negative elements
 positive = onto_mgr.search_individuals(class_name='wine:Zinfandel', requested_value='TRUE', as_strings=True)
-negative = onto_mgr.search_individuals(class_name='wine:Wine', requested_value='FALSE', as_strings=True)
 
 # modify the set of positive examples in order to fake a less crisp set
 positive.add('wine:LongridgeMerlot')
 
-# ______________________________________________________________________________________________________________________
+
 
 # print the positive and negative sets
 print("Positive examples:", positive)
-print("Negative examples:", negative)
-# ______________________________________________________________________________________________________________________
+
 # Run the approximator with the given example sets
-upper_names, lower_names = approximator.approximate(positive, negative, theta=0.8)
+upper_names, lower_names = approximator.approximate(positive, theta=0.8)
 
 upper = onto_mgr.search_individuals(names=upper_names)
 lower = onto_mgr.search_individuals(names=lower_names)
