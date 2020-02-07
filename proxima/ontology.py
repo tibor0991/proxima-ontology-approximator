@@ -22,7 +22,7 @@ _PT_FALSE = 'FALSE'
 
 default_remapper = DataRemapper({_PT_TRUE: 1, _PT_FALSE: 0, _PT_UNCERTAIN: 0.5})
 # sets the global render func
-or2.set_render_func(render_colon)
+# or2.set_render_func(render_colon)
 
 
 class OntologyManager:
@@ -78,16 +78,12 @@ class OntologyManager:
                 raise
 
         elif projection_mode == 'reasoner':
-            # check if __fast__ reasoning is enabled
-            fast_build = kwargs.get('use_fast_reasoning') or False
             # list that holds all the references to the not_ classes
             classes_with_complements = []
             with self.onto:
                 for c_name, c_item in self.classes.items():
                     neg_class = types.new_class('NOT_' + c_item.name, (or2.Thing,))
                     neg_class.equivalent_to = [or2.Not(c_item)]
-                    if not fast_build:
-                        or2.AllDisjoint([c_item, neg_class])
                     classes_with_complements.append((c_name, c_item, neg_class))
 
             # run the reasoner
@@ -123,7 +119,9 @@ class OntologyManager:
 
     def insert_approximated_concept(self, concept_name, upper_set, lower_set, LCS_construct):
         with self.onto:
-            UpperClass = types.new_class("Possibly_"+concept_name, (LCS_construct,))
+            LCS = types.new_class("LCS_"+concept_name, (or2.Thing,))
+            LCS.equivalent_to = LCS_construct
+            UpperClass = types.new_class("Possibly_"+concept_name, (LCS,))
             LowerClass = types.new_class("Definitively_"+concept_name, (UpperClass,))
 
             for u in upper_set:
@@ -164,10 +162,8 @@ class OntologyManager:
             for c in e.is_a:
                 coverage.add(c)
 
-        equivalence_construct = or2.Nothing
-        for c in coverage:
-            equivalence_construct = equivalence_construct | c
-        return [equivalence_construct]
+        equivalence_construct = or2.Or(coverage)
+        return equivalence_construct
 
 
 
@@ -183,11 +179,11 @@ if __name__ == '__main__':
     if 'LCS_test' in sys.argv:
         csv_path = tkinter.filedialog.askopenfilename(title="Select a CSV table file:")
         ont_mgr.build_table(mode='from_file', table_path=csv_path)
-        ex = list(ont_mgr.get_individuals(mode='by_class', class_name='wine:Zinfandel', value='TRUE'))
+        ex = list(ont_mgr.get_individuals(mode='by_class', class_name='wine.Zinfandel', value='TRUE'))
         print("Does it retrieve the examples?", ex)
         LCS = ont_mgr.get_LCS_construct(ex)
         print(LCS)
-        LCS_set = ont_mgr.onto.search(type=LCS)
+        LCS_set = list(ont_mgr.onto.search(type=LCS))
         ont_mgr.insert_approximated_concept('Zinfandel', ex, ex, LCS)
         output_file = tkinter.filedialog.asksaveasfilename(defaultextension=".owl")
         ont_mgr.export_ontology(output_file)
