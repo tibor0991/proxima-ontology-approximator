@@ -1,9 +1,6 @@
-import tkinter
-from tkinter import filedialog
-from proxima import approximation, ontology
+from proxima import approximation, ontology, utils
 
-tkinter.Tk().withdraw()
-input_file_path = tkinter.filedialog.askopenfilename(title="Select an OWL ontology file:")
+input_file_path = utils.open_file("Select an OWL ontology to open:", 'owl')
 
 # terminate if there's no file path provided
 if not input_file_path:
@@ -12,18 +9,20 @@ if not input_file_path:
 # loads the ontology into the manager
 onto_mgr = ontology.OntologyManager(input_file_path)
 
-load_from_file = True
+load_from_file = utils.ask_boolean("Projection table", "Load projection table from file?")
 
 if load_from_file:
-    table_path = tkinter.filedialog.askopenfilename(title="Select a prebuilt projection table:")
+    table_path = utils.open_file("Select a prebuilt projection table:", 'csv')
     onto_mgr.build_table(mode='from_file', table_path=table_path)
 else:
-    onto_mgr.build_table(use_reasoner=True)
+    onto_mgr.build_table(mode='reasoner', check_consistency=True)
+    table_export = utils.save_file("Save projection table to:", 'csv')
+    onto_mgr.export_table(table_export)
 
 # Build an approximator
 approximator = approximation.ToleranceApproximator()
 
-# provide a set of positive and negative elements
+# let's build a set of positive and negative elements
 positive_names = set(onto_mgr.get_individuals(mode='by_class', class_name='wine:Zinfandel', value='TRUE', as_strings=True))
 
 # modify the set of positive examples in order to fake a less crisp set
@@ -39,7 +38,7 @@ upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, app
 
 print("Upper approx:", upper, "\n\r", "Lower approx:", lower)
 
-output_file = tkinter.filedialog.asksaveasfilename(defaultextension=".owl")
+output_file = utils.save_file("Save modified ontology to:", 'owl')
 onto_mgr.export_ontology(output_file)
 
 print("Exported modified ontology as ", output_file)

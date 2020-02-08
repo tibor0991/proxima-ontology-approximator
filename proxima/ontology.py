@@ -32,6 +32,10 @@ class OntologyManager:
         _classes = {str(c): c for c in _onto.classes()}
         _individuals = {str(i): i for i in _onto.individuals()}
 
+        print("Loaded ontology:", _onto.name)
+        print("Classes:", len(_classes.keys()))
+        print("Individuals:", len(_individuals.keys()))
+
         # saves the variables in the object
         self.onto = _onto
         self.projection_table = None
@@ -42,7 +46,7 @@ class OntologyManager:
         """
         Builds (or loads) the projection table with the given parameters.
 
-        :key use_reasoner: shall a consistency check be run before building the projection table? (default is False)
+        :key check_consistency: shall a consistency check be run before building the projection table? (default is False)
         :key mode: specifies how the projection table must be built:
             - 'disjunction': The projection value is computed by looking up the disjunction pairs (faster, but prone to errors);
             - 'from_file': The projection table is loaded from the path provided in the 'table_path' key;
@@ -53,8 +57,8 @@ class OntologyManager:
         # build the projection table
         _table = pd.DataFrame(data=_PT_UNCERTAIN, index=self.individuals.keys(), columns=self.classes.keys())
         # run the reasoner
-        use_reasoner = kwargs.get('use_reasoner') or False
-        if use_reasoner:
+        check_consistency = kwargs.get('check_consistency') or False
+        if check_consistency:
             with self.onto:
                 # runs a consistency check
                 or2.sync_reasoner_pellet()
@@ -89,6 +93,7 @@ class OntologyManager:
                 raise
         # Build using the reasoner
         elif projection_mode == 'reasoner':
+            print("WARNING: This method introduces a lot of noise in the ontology, use it only to build a projection table!")
             # list that holds all the references to the not_ classes
             classes_with_complements = []
             with self.onto:
@@ -105,11 +110,12 @@ class OntologyManager:
             for c_name, c, not_c in classes_with_complements:
                 true_set = set(c.instances())
                 false_set = set(not_c.instances())
-
                 for t in true_set:
                     _table.at[str(t), c_name] = _PT_TRUE
                 for f in false_set:
                     _table.at[str(f), c_name] = _PT_FALSE
+
+
         else:
             raise Exception("ERROR: Unrecognized mode '%s'." % projection_mode)
 

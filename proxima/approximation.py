@@ -7,7 +7,9 @@ from sklearn import decomposition, preprocessing
 class SimilarityMeasure:
     def __init__(self, covariance_matrix):
         self.iv = np.linalg.inv(covariance_matrix)
-        self.gamma = 1. / (2 * covariance_matrix[0, 0])
+        diagonal = np.diagonal(covariance_matrix)
+
+        self.gamma = 1. / (2 * np.average(diagonal))
         # TODO: do the average of the diagonal instead of picking the highest eigenvalue
 
     def __call__(self, a, b):
@@ -30,12 +32,18 @@ class NeighbourhoodSearcher:
         return nh
 
 
-# TODO: implement variable precision
-def rough_membership(a_set, b_set, beta=0):
-    if a_set:
-        return len(a_set & b_set) / len(a_set)
-    else:
-        return 1
+def rough_membership(left_set, right_set, beta=0):
+    if left_set:  # if the left set is not null
+        m = len(left_set & right_set) / len(left_set)
+        if m <= beta:
+            m = 0
+        elif m >= (1. - beta):
+            m = 1
+        else:
+            m = (m-beta)/(1-2*beta)
+    else:  # avoid division by 0, better safe than sorry
+        m = 1
+    return m
 
 
 class ToleranceApproximator:
@@ -59,7 +67,7 @@ class ToleranceApproximator:
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
         self.neighbourhood = NeighbourhoodSearcher(self.U, similarity)
 
-    def approximate(self, examples, theta, beta=1.):
+    def approximate(self, examples, theta, beta=0.):
         upper = set()
         lower = set()
         for ind_name, *ind_data in self.U.itertuples():
