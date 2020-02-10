@@ -78,6 +78,4 @@ class ToleranceApproximator:
                 pairs[ind_name] = neigh_set
             if membership == 1:
                 lower.add(ind_name)
-
-        print(pairs)
         return upper, lower, pairs
