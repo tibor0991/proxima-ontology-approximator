@@ -185,8 +185,8 @@ class OntologyManager:
             # builds the similarity relation
             relation_name = "isSimilar_wrt_" + concept_name
             sim_relation = types.new_class(relation_name, (or2.SymmetricProperty, or2.ReflexiveProperty,))
-            sim_relation.domain = [LCS_construct]
-            sim_relation.range = [LCS_construct]
+            #sim_relation.domain = [LCS_construct]
+            #sim_relation.range = [LCS_construct]
 
             # for each key in the pairs dictionary, add a similarity relation
             for center, neighbours in pairs.items():
@@ -198,20 +198,17 @@ class OntologyManager:
                 Basically, owlready2 has no support for procedurally-created definitions, so I'm forced to use
                 these workarounds
                 """
-                # should result in: center.isSimilar_wrt_{concept_name} = neighbours
+                # should result in: center.isSimilar_wrt_{concept_name}.extend(neighbours)
                 append_to_property = 'center.'+relation_name+'.extend(neighbours)'
                 eval(append_to_property)
 
-            # builds an anonymous class that holds the example instances
-            _anonClass1 = or2.OneOf(examples)
-            _anonClass2 = or2.OneOf(examples)
             # builds the upper approximation class
             _upperClass = types.new_class("Possibly_" + concept_name, (or2.Thing,))
             _upperClass.is_a = [LCS_construct]
-            _upperClass.equivalent_to.extend([sim_relation.some(_anonClass1)])  # existential restriction
+            _upperClass.equivalent_to.extend([sim_relation.some(or2.OneOf(examples))])  # existential restriction
             # builds the lower approximation class
             _lowerClass = types.new_class("Definitively_" + concept_name, (or2.Thing,))
-            _lowerClass.equivalent_to.extend([sim_relation.only(_anonClass2)])    # universal restriction
+            _lowerClass.equivalent_to.extend([sim_relation.some(or2.OneOf(examples)) & sim_relation.only(or2.OneOf(examples))])    # universal restriction /w fix
 
             for u in upper:
                 u.is_a.append(_upperClass)
