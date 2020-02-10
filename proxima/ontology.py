@@ -172,10 +172,10 @@ class OntologyManager:
         equivalence_construct = or2.Or(coverage)
         return equivalence_construct
 
-    def approximate_concept(self, concept_name, examples, approximator, theta):
+    def approximate_concept(self, concept_name, examples, approximator, theta, beta):
         concept_set = set([str(ex) for ex in examples])
         approximator.fit(self.get_mapped_table())
-        upper_names, lower_names, pairs = approximator.approximate(concept_set, theta)
+        upper_names, lower_names, pairs = approximator.approximate(concept_set, theta, beta)
         upper = [ind for name, ind in self.individuals.items() if name in upper_names]
         lower = [ind for name, ind in self.individuals.items() if name in lower_names]
 

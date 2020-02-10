@@ -34,7 +34,9 @@ positive = list(onto_mgr.get_individuals(mode='by_names', names=positive_names))
 print("Positive examples:", positive)
 
 # Run the approximator with the given example sets
-upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, approximator, theta=0.1)
+t = utils.ask_parameter('Theta', 0.5)
+b = utils.ask_parameter('Beta (optional)', 0)
+upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, approximator, t, b)
 
 print("Upper approx:", upper, "\n\r", "Lower approx:", lower)
 
