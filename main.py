@@ -13,7 +13,7 @@ load_from_file = utils.ask_boolean("Projection table", "Load projection table fr
 
 if load_from_file:
     table_path = utils.open_file("Select a prebuilt projection table:", 'csv')
-    onto_mgr.build_table(mode='from_file', table_path=table_path)
+    onto_mgr.build_table(mode='from_file', table_path=table_path, check_consistency=True)
 else:
     onto_mgr.build_table(mode='reasoner', check_consistency=True)
     table_export = utils.save_file("Save projection table to:", 'csv')
@@ -34,7 +34,7 @@ positive = list(onto_mgr.get_individuals(mode='by_names', names=positive_names))
 print("Positive examples:", positive)
 
 # Run the approximator with the given example sets
-upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, approximator, theta=0.6)
+upper, lower = onto_mgr.approximate_concept('MyPersonalSelection', positive, approximator, theta=0.1)
 
 print("Upper approx:", upper, "\n\r", "Lower approx:", lower)
 

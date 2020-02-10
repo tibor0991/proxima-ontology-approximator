@@ -136,16 +136,7 @@ class OntologyManager:
     def get_mapped_table(self, remapper=default_remapper):
         return self.projection_table.apply(np.vectorize(remapper))
 
-    def insert_approximated_concept(self, concept_name, upper_set, lower_set, LCS_construct):
-        with self.onto:
-            _upperClass = types.new_class("Possibly_"+concept_name, (or2.Thing,))
-            _upperClass.is_a = [LCS_construct]  # LCS subsumes upper approximation
-            _lowerClass = types.new_class("Definitively_"+concept_name, (_upperClass,))
 
-            for u in upper_set:
-                u.is_a.append(_upperClass)
-            for l in lower_set:
-                l.is_a.append(_lowerClass)
 
     def get_individuals(self, mode, **kwargs):
         if mode == 'by_class':
@@ -181,12 +172,50 @@ class OntologyManager:
         equivalence_construct = or2.Or(coverage)
         return equivalence_construct
 
-    def approximate_concept(self, name, examples, approximator, theta):
+    def approximate_concept(self, concept_name, examples, approximator, theta):
         concept_set = set([str(ex) for ex in examples])
         approximator.fit(self.get_mapped_table())
-        upper_names, lower_names = approximator.approximate(concept_set, theta)
+        upper_names, lower_names, pairs = approximator.approximate(concept_set, theta)
         upper = [ind for name, ind in self.individuals.items() if name in upper_names]
         lower = [ind for name, ind in self.individuals.items() if name in lower_names]
-        eq_construct = self.get_LCS_construct(examples)
-        self.insert_approximated_concept(name, upper, lower, eq_construct)
+
+        with self.onto:
+            # gets the LCS (upper boundary)
+            LCS_construct = self.get_LCS_construct(examples)
+            # builds the similarity relation
+            relation_name = "isSimilar_wrt_" + concept_name
+            sim_relation = types.new_class(relation_name, (or2.SymmetricProperty, or2.ReflexiveProperty,))
+            sim_relation.domain = [LCS_construct]
+            sim_relation.range = [LCS_construct]
+
+            # for each key in the pairs dictionary, add a similarity relation
+            for center, neighbours in pairs.items():
+                center = self.individuals[center]
+                neighbours = [self.individuals[n] for n in neighbours]
+
+                """
+                This is awful, terrible, and completely fucked all around...
+                Basically, owlready2 has no support for procedurally-created definitions, so I'm forced to use
+                these workarounds
+                """
+                # should result in: center.isSimilar_wrt_{concept_name} = neighbours
+                append_to_property = 'center.'+relation_name+'.extend(neighbours)'
+                eval(append_to_property)
+
+            # builds an anonymous class that holds the example instances
+            _anonClass1 = or2.OneOf(examples)
+            _anonClass2 = or2.OneOf(examples)
+            # builds the upper approximation class
+            _upperClass = types.new_class("Possibly_" + concept_name, (or2.Thing,))
+            _upperClass.is_a = [LCS_construct]
+            _upperClass.equivalent_to.extend([sim_relation.some(_anonClass1)])  # existential restriction
+            # builds the lower approximation class
+            _lowerClass = types.new_class("Definitively_" + concept_name, (or2.Thing,))
+            _lowerClass.equivalent_to.extend([sim_relation.only(_anonClass2)])    # universal restriction
+
+            for u in upper:
+                u.is_a.append(_upperClass)
+            for l in lower:
+                l.is_a.append(_lowerClass)
+
         return upper, lower

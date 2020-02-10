@@ -22,5 +22,4 @@ def save_file(title, type):
 
 
 def ask_boolean(title, message):
-    answer = messagebox.askyesno(title, message)
-    return answer == 'yes'
+    return messagebox.askyesno(title, message)

@@ -10,7 +10,6 @@ class SimilarityMeasure:
         diagonal = np.diagonal(covariance_matrix)
 
         self.gamma = 1. / (2 * np.average(diagonal))
-        # TODO: do the average of the diagonal instead of picking the highest eigenvalue
 
     def __call__(self, a, b):
         d = distance.mahalanobis(a, b, self.iv)
@@ -70,11 +69,15 @@ class ToleranceApproximator:
     def approximate(self, examples, theta, beta=0.):
         upper = set()
         lower = set()
+        pairs = dict()
         for ind_name, *ind_data in self.U.itertuples():
             neigh_set = self.neighbourhood(ind_data, theta)
             membership = rough_membership(neigh_set, examples, beta)
             if membership > 0:
                 upper.add(ind_name)
+                pairs[ind_name] = neigh_set
             if membership == 1:
                 lower.add(ind_name)
-        return upper, lower
+
+        print(pairs)
+        return upper, lower, pairs
