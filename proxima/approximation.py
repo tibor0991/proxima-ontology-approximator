@@ -52,32 +52,30 @@ class ToleranceApproximator:
         self.U = None
         self.neighbourhood = None
 
-    def fit(self, projection_table, positives, variance=0.95):
+    def fit(self, projection_table: pd.DataFrame, positives: pd.Series, variance=0.95):
         # scale the data
         scaler = preprocessing.StandardScaler()
         scaled_data = scaler.fit_transform(projection_table)
 
         # apply PCA
-        PCA = decomposition.PCA(variance)
+        PCA = decomposition.PCA(variance, whiten=True)
         pca_data = PCA.fit_transform(scaled_data)
 
-        # get the covariance matrix from the PCA mapped space
-        covariance = np.cov(pca_data, rowvar=False)
-        similarity = SimilarityMeasure(covariance_matrix=covariance)
-        # U is the whole set of individuals in the ontology
+        # U is the whole set of individuals in the ontology (minus the SVM labels)
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
-        self.neighbourhood = NeighbourhoodSearcher(self.U, similarity)
 
-    def approximate(self, examples: list[str], theta, beta=0.):
-        # plug SVM here
+        classification_labels = pd.Series(
+            {key: ('WITHIN_LCS' if key in positives else 'OUTSIDE_LCS') for key in projection_table.index})
+
+        # SVM optimization
         C_range = np.logspace(-2, 10, 13)
         gamma_range = np.logspace(-9, 3, 13)
         param_grid = dict(gamma=gamma_range, C=C_range)
         cv = model_selection.StratifiedShuffleSplit(n_splits=5, test_size=0.2, random_state=42)
         grid = model_selection.GridSearchCV(svm.SVC(), param_grid=param_grid, cv=cv)
-        grid.fit(self.U, y)
+        grid.fit(self.U, classification_labels)
 
-
+    def approximate(self, beta=0.):
         # rough approximation here
         upper = set()
         lower = set()

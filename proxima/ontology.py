@@ -176,7 +176,7 @@ class OntologyManager:
         concept_set = set([str(ex) for ex in examples])
         # gets the LCS (upper boundary)
         LCS_construct = self.get_LCS_construct(examples)
-        LCS_set = [str(i) for i in self.onto.search(LCS_construct)]
+        LCS_set = [str(i) for i in self.onto.search(type=LCS_construct)]
         approximator.fit(self.get_mapped_table(), LCS_set)
         upper_names, lower_names, pairs = approximator.approximate(concept_set, theta, beta)
         upper = [ind for name, ind in self.individuals.items() if name in upper_names]
