@@ -174,30 +174,25 @@ class OntologyManager:
 
     def approximate_concept(self, concept_name, examples, approximator, theta, beta):
         concept_set = set([str(ex) for ex in examples])
-        approximator.fit(self.get_mapped_table())
+        # gets the LCS (upper boundary)
+        LCS_construct = self.get_LCS_construct(examples)
+        LCS_set = [str(i) for i in self.onto.search(LCS_construct)]
+        approximator.fit(self.get_mapped_table(), LCS_set)
         upper_names, lower_names, pairs = approximator.approximate(concept_set, theta, beta)
         upper = [ind for name, ind in self.individuals.items() if name in upper_names]
         lower = [ind for name, ind in self.individuals.items() if name in lower_names]
 
         with self.onto:
-            # gets the LCS (upper boundary)
-            LCS_construct = self.get_LCS_construct(examples)
+
             # builds the similarity relation
             relation_name = "isSimilar_wrt_" + concept_name
             sim_relation = types.new_class(relation_name, (or2.SymmetricProperty, or2.ReflexiveProperty,))
-            #sim_relation.domain = [LCS_construct]
-            #sim_relation.range = [LCS_construct]
 
             # for each key in the pairs dictionary, add a similarity relation
             for center, neighbours in pairs.items():
                 center = self.individuals[center]
                 neighbours = [self.individuals[n] for n in neighbours]
 
-                """
-                This is awful, terrible, and completely fucked all around...
-                Basically, owlready2 has no support for procedurally-created definitions, so I'm forced to use
-                these workarounds
-                """
                 # should result in: center.isSimilar_wrt_{concept_name}.extend(neighbours)
                 append_to_property = 'center.'+relation_name+'.extend(neighbours)'
                 eval(append_to_property)
@@ -208,7 +203,7 @@ class OntologyManager:
             _upperClass.equivalent_to.extend([sim_relation.some(or2.OneOf(examples))])  # existential restriction
             # builds the lower approximation class
             _lowerClass = types.new_class("Definitively_" + concept_name, (or2.Thing,))
-            _lowerClass.equivalent_to.extend([sim_relation.some(or2.OneOf(examples)) & sim_relation.only(or2.OneOf(examples))])    # universal restriction /w fix
+            _lowerClass.equivalent_to.extend([sim_relation.only(or2.OneOf(examples))])    # universal restriction
 
             for u in upper:
                 u.is_a.append(_upperClass)

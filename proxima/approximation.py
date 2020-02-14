@@ -2,6 +2,8 @@ import pandas as pd
 from scipy.spatial import distance
 import numpy as np
 from sklearn import decomposition, preprocessing
+from sklearn import model_selection
+from sklearn import svm
 
 
 class SimilarityMeasure:
@@ -50,7 +52,7 @@ class ToleranceApproximator:
         self.U = None
         self.neighbourhood = None
 
-    def fit(self, projection_table, variance=0.95):
+    def fit(self, projection_table, positives, variance=0.95):
         # scale the data
         scaler = preprocessing.StandardScaler()
         scaled_data = scaler.fit_transform(projection_table)
@@ -66,7 +68,17 @@ class ToleranceApproximator:
         self.U = pd.DataFrame(pca_data, index=projection_table.index)
         self.neighbourhood = NeighbourhoodSearcher(self.U, similarity)
 
-    def approximate(self, examples, theta, beta=0.):
+    def approximate(self, examples: list[str], theta, beta=0.):
+        # plug SVM here
+        C_range = np.logspace(-2, 10, 13)
+        gamma_range = np.logspace(-9, 3, 13)
+        param_grid = dict(gamma=gamma_range, C=C_range)
+        cv = model_selection.StratifiedShuffleSplit(n_splits=5, test_size=0.2, random_state=42)
+        grid = model_selection.GridSearchCV(svm.SVC(), param_grid=param_grid, cv=cv)
+        grid.fit(self.U, y)
+
+
+        # rough approximation here
         upper = set()
         lower = set()
         pairs = dict()
