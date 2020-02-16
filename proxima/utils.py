@@ -5,7 +5,8 @@ tkinter.Tk().withdraw()
 
 filetypes = {
     'owl': ('OWL Ontology file', '.owl'),
-    'csv': ('CSV Table', '.csv')
+    'csv': ('CSV Table', '.csv'),
+    'pkl': ('Pickled Python Object', '.pkl')
 }
 
 
