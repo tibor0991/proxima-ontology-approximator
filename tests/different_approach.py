@@ -1,3 +1,5 @@
+import types
+
 import numpy as np
 import owlready2 as owl
 from sklearn.pipeline import Pipeline
@@ -24,9 +26,8 @@ table_path = utils.open_file("Open projection table", 'csv')
 projection_table = pd.read_csv(table_path, sep=';', index_col=0).apply(np.vectorize(ontology.default_remapper))
 
 # get list of examples
-#search_list = ['wine:RoseDAnjou', 'wine:SevreEtMaineMuscadet', 'wine:ChateauMargaux',
-#               'wine:ChateauLafiteRothschildPauillac', 'wine:ElyseZinfandel', 'wine:ChiantiClassico']
-#concept_examples = [individuals[s] for s in search_list]
+# search_list = ['wine:RoseDAnjou', 'wine:SevreEtMaineMuscadet', 'wine:ChateauMargaux', 'wine:ChateauLafiteRothschildPauillac', 'wine:ElyseZinfandel', 'wine:ChiantiClassico']
+# concept_examples = [individuals[s] for s in search_list]
 concept_examples = set(onto.search(type=classes['wine:Zinfandel']))
 concept_examples.add(individuals['wine:LongridgeMerlot'])
 
@@ -45,37 +46,24 @@ target_class = pd.Series({name: 'POSITIVE' if individuals[name] in concept_examp
                           for name in training_samples})
 
 # _____________________________________________TRAINING_________________________________________________________________
-process_steps = [('scaling', 'passthrough'),
-                 ('reduction', 'passthrough'),
+process_steps = [('scaling', preprocessing.RobustScaler()),
+                 ('reduction', decomposition.PCA(whiten=True)),
                  ('estimator', svm.SVC(kernel='linear'))]
 
 data_pipe = Pipeline(process_steps)
 
 train = utils.ask_boolean("Training", "Train over data?")
 if train:
-    # search values for gamma
-    gamma_range = list(np.logspace(-9, 3, 13))
-
-    # search values for n_components (kPCA)
-    kPCA_n_components_range = list(np.floor(np.logspace(1, np.log2(len(individuals)), 8, base=2)))
-
     # search values for n_components (PCA)
-    lPCA_n_components_range = list(np.logspace(np.log(0.20), np.log2(0.95), 10, base=2))
+    lPCA_n_components_range = list(np.logspace(np.log(0.20), np.log2(0.95), 10, base=2)) + \
+                              list(np.floor(np.logspace(1, np.log2(len(classes)), 8, base=2)).astype(int))
 
     # search values for C
     C_range = list(np.logspace(-2, 10, 13))
 
     # store ranges in the params dict
-    scalers = [preprocessing.StandardScaler(), preprocessing.QuantileTransformer(), preprocessing.RobustScaler()]
     param_grid = [
-        {'scaling': scalers,
-         'reduction': [decomposition.KernelPCA(kernel='rbf')],
-         'reduction__n_components': kPCA_n_components_range,
-         'reduction__gamma': gamma_range,
-         'estimator__C': C_range},
-        {'scaling': scalers,
-         'reduction': [decomposition.PCA(whiten=True)],
-         'reduction__n_components': lPCA_n_components_range,
+        {'reduction__n_components': lPCA_n_components_range,
          'estimator__C': C_range}
     ]
     print(param_grid)
@@ -102,7 +90,8 @@ else:
             best_params = pickle.load(f)
     else:
         best_params = {'estimator__C': 1000000.0,
-                       'reduction': decomposition.PCA(copy=True, iterated_power='auto', n_components=0.20269956628651734,
+                       'reduction': decomposition.PCA(copy=True, iterated_power='auto',
+                                                      n_components=0.20269956628651734,
                                                       random_state=None, svd_solver='auto', tol=0.0, whiten=True),
                        'reduction__n_components': 0.20269956628651734,
                        'scaling': preprocessing.StandardScaler(copy=True, with_mean=True, with_std=True)}
@@ -153,16 +142,44 @@ boundary_neighbourhoods = {label: set([other_label
 all_neighbourhoods = {**boundary_neighbourhoods, **examples_neighbourhoods}
 print("Example individuals:", examples_set)
 print("Boundary individuals:", boundary_set)
-upper = []
-lower = []
-for label, neighbourhood in all_neighbourhoods.items():
-    print("Neighbourhood of %s:" % label, neighbourhood)
-    m_index = approximation.rough_membership(neighbourhood, examples_set)
-    print("\tInclusion index:", m_index)
-    if m_index == 1:
-        lower.append(label)
-    if m_index > 0:
-        upper.append(label)
 
-print("Upper Approximation:", upper)
-print("Lower Approximation:", lower)
+concept_name = 'MyPersonalSelection'
+upper, lower = [], []
+with onto:
+    # builds the similarity relation
+    relation_name = "isSimilar_wrt_" + concept_name
+    sim_relation = types.new_class(relation_name, (owl.SymmetricProperty, owl.ReflexiveProperty,))
+
+    # builds the upper approximation class
+    _upperClass = types.new_class("Possibly_" + concept_name, (owl.Thing,))
+    _upperClass.is_a = [LCS]
+    _upperClass.equivalent_to.extend([sim_relation.some(owl.OneOf(concept_examples))])  # existential restriction
+    # builds the lower approximation class
+    _lowerClass = types.new_class("Definitively_" + concept_name, (owl.Thing,))
+    _lowerClass.equivalent_to.extend([sim_relation.only(owl.OneOf(concept_examples))])  # universal restriction
+
+    # for each key in the pairs dictionary, add a similarity relation
+    for label, neighbourhood in all_neighbourhoods.items():
+        center = individuals[label]
+        neighbours = [individuals[neighbour] for neighbour in neighbourhood]
+
+        # should result in: center.isSimilar_wrt_{concept_name}.extend(neighbours)
+        append_to_property = 'center.' + relation_name + '.extend(neighbours)'
+        eval(append_to_property)
+
+        print("Neighbourhood of %s:" % label, neighbourhood)
+        m_index = approximation.rough_membership(neighbourhood, examples_set)
+        print("\tInclusion index:", m_index)
+        if m_index == 1:
+            lower.append(label)
+            center.is_a.append(_lowerClass)
+        if m_index > 0:
+            upper.append(label)
+            center.is_a.append(_upperClass)
+
+print("Upper approximation:", upper)
+print("Lower approximation:", lower)
+
+# finally, export the ontology
+ontology_export_path = utils.save_file("Export ontology to:", 'owl')
+onto.save(ontology_export_path)
