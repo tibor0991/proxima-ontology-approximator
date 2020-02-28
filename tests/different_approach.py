@@ -16,6 +16,9 @@ onto = owl.get_ontology(input_ontology).load()
 with onto:
     owl.sync_reasoner_pellet()
 
+concept_name = 'Zinfandel'
+print("Rough concept:", concept_name)
+
 classes = {str(c): c for c in onto.classes()}
 individuals = {str(i): i for i in onto.individuals()}
 
@@ -29,7 +32,7 @@ projection_table = pd.read_csv(table_path, sep=';', index_col=0).apply(np.vector
 # search_list = ['wine:RoseDAnjou', 'wine:SevreEtMaineMuscadet', 'wine:ChateauMargaux', 'wine:ChateauLafiteRothschildPauillac', 'wine:ElyseZinfandel', 'wine:ChiantiClassico']
 # concept_examples = [individuals[s] for s in search_list]
 concept_examples = set(onto.search(type=classes['wine:Zinfandel']))
-concept_examples.add(individuals['wine:LongridgeMerlot'])
+#concept_examples.add(individuals['wine:LongridgeMerlot'])
 
 # get LCS of examples
 coverage = set()
@@ -142,14 +145,12 @@ boundary_neighbourhoods = {label: set([other_label
 all_neighbourhoods = {**boundary_neighbourhoods, **examples_neighbourhoods}
 print("Example individuals:", examples_set)
 print("Boundary individuals:", boundary_set)
-
-concept_name = 'MyPersonalSelection'
 upper, lower = [], []
 with onto:
     # builds the similarity relation
     relation_name = "isSimilar_wrt_" + concept_name
     sim_relation = types.new_class(relation_name, (owl.SymmetricProperty, owl.ReflexiveProperty,))
-
+    print("New property inserted as: ", sim_relation)
     # builds the upper approximation class
     _upperClass = types.new_class("Possibly_" + concept_name, (owl.Thing,))
     _upperClass.is_a = [LCS]
@@ -169,7 +170,7 @@ with onto:
 
         print("Neighbourhood of %s:" % label, neighbourhood)
         m_index = approximation.rough_membership(neighbourhood, examples_set)
-        print("\tInclusion index:", m_index)
+        #print("\tInclusion index:", m_index)
         if m_index == 1:
             lower.append(label)
             center.is_a.append(_lowerClass)
