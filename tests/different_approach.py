@@ -16,7 +16,7 @@ onto = owl.get_ontology(input_ontology).load()
 with onto:
     owl.sync_reasoner_pellet()
 
-concept_name = 'Zinfandel'
+concept_name = 'Hypertension'
 print("Rough concept:", concept_name)
 
 classes = {str(c): c for c in onto.classes()}
@@ -24,15 +24,23 @@ individuals = {str(i): i for i in onto.individuals()}
 
 table_index = individuals.keys()
 table_columns = classes.keys()
-
+print("Individuals:", len(individuals), individuals.values())
+print("Classes:", len(classes), classes.values())
 table_path = utils.open_file("Open projection table", 'csv')
 projection_table = pd.read_csv(table_path, sep=';', index_col=0).apply(np.vectorize(ontology.default_remapper))
-
 # get list of examples
-# search_list = ['wine:RoseDAnjou', 'wine:SevreEtMaineMuscadet', 'wine:ChateauMargaux', 'wine:ChateauLafiteRothschildPauillac', 'wine:ElyseZinfandel', 'wine:ChiantiClassico']
-# concept_examples = [individuals[s] for s in search_list]
-concept_examples = set(onto.search(type=classes['wine:Zinfandel']))
+"""
+search_list = ['wine:RoseDAnjou', 'wine:SevreEtMaineMuscadet', 'wine:ChateauMargaux', 'wine:ChateauLafiteRothschildPauillac', 'wine:ElyseZinfandel', 'wine:ChiantiClassico']
+concept_examples = [individuals[s] for s in search_list]
+concept_examples = set(onto.search(type=classes['wine:RedWine']))
+#concept_examples.pop()
 #concept_examples.add(individuals['wine:LongridgeMerlot'])
+"""
+search_list = ['Carrot', 'Turnip', 'Spinach', 'Cabbage', 'GlobeArtichoke']
+search_list = map(lambda x: 'naturopathy-dataset:'+x, search_list)
+concept_examples = [individuals[s] for s in search_list]
+
+#concept_examples = set(onto.search(type=classes['wine:Zinfandel']))
 
 # get LCS of examples
 coverage = set()
@@ -58,8 +66,7 @@ data_pipe = Pipeline(process_steps)
 train = utils.ask_boolean("Training", "Train over data?")
 if train:
     # search values for n_components (PCA)
-    lPCA_n_components_range = list(np.logspace(np.log(0.20), np.log2(0.95), 10, base=2)) + \
-                              list(np.floor(np.logspace(1, np.log2(len(classes)), 8, base=2)).astype(int))
+    lPCA_n_components_range = list(np.logspace(np.log(0.20), np.log2(0.95), 10, base=2))
 
     # search values for C
     C_range = list(np.logspace(-2, 10, 13))
